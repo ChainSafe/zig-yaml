@@ -200,8 +200,9 @@ fn parsePointer(self: Yaml, arena: Allocator, comptime T: type, value: Value) Er
 
     switch (ptr_info.size) {
         .slice => {
-            if (ptr_info.child == u8) {
-                return try arena.dupe(u8, try value.asScalar());
+            if (ptr_info.child == u8) blk: {
+                const scalar = value.asScalar() catch break :blk;
+                return try arena.dupe(u8, scalar);
             }
 
             var parsed = try arena.alloc(ptr_info.child, value.list.len);

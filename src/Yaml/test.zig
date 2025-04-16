@@ -385,7 +385,7 @@ test "hex string" {
     defer value.deinit(std.testing.allocator);
 
     try std.testing.expectEqualDeep(
-        Yaml.Value{ .string = "0xdeadbeef" },
+        Yaml.Value{ .scalar = "0xdeadbeef" },
         value.docs.items[0].map.get("hex_str").?,
     );
 }

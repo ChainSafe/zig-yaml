@@ -100,23 +100,8 @@ fn parseValue(self: Yaml, arena: Allocator, comptime T: type, value: Value) Erro
         .pointer => if (value.asList()) |list| {
             return self.parsePointer(arena, T, .{ .list = list });
         } else |_| {
-            // Handle all value types that can be treated as strings
-            const string = switch (value) {
-                .string => |s| try arena.dupe(u8, s),
-                .boolean => |b| try arena.dupe(u8, if (b) "true" else "false"),
-                .int => |i| blk: {
-                    var buf: [64]u8 = undefined;
-                    const s = std.fmt.bufPrint(&buf, "{d}", .{i}) catch return error.TypeMismatch;
-                    break :blk try arena.dupe(u8, s);
-                },
-                .float => |fl| blk: {
-                    var buf: [256]u8 = undefined;
-                    const s = std.fmt.bufPrint(&buf, "{d}", .{fl}) catch return error.TypeMismatch;
-                    break :blk try arena.dupe(u8, s);
-                },
-                else => return error.TypeMismatch,
-            };
-            return self.parsePointer(arena, T, .{ .string = string });
+            const scalar = try value.asScalar();
+            return self.parsePointer(arena, T, .{ .scalar = try arena.dupe(u8, scalar) });
         },
         .void => error.TypeMismatch,
         .optional => unreachable,
@@ -215,8 +200,9 @@ fn parsePointer(self: Yaml, arena: Allocator, comptime T: type, value: Value) Er
 
     switch (ptr_info.size) {
         .slice => {
-            if (ptr_info.child == u8) {
-                return try arena.dupe(u8, try value.asScalar());
+            if (ptr_info.child == u8) blk: {
+                const scalar = value.asScalar() catch break :blk;
+                return try arena.dupe(u8, scalar);
             }
 
             var parsed = try arena.alloc(ptr_info.child, value.list.len);
@@ -533,39 +519,11 @@ pub const Value = union(enum) {
             },
             .string_value => {
                 const raw = tree.nodeData(node_index).string.slice(tree);
-                return Value{ .string = try gpa.dupe(u8, raw) };
+                return Value{ .scalar = try gpa.dupe(u8, raw) };
             },
             .value => {
                 const raw = tree.nodeScope(node_index).rawString(tree);
-
-                try_int: {
-                    const int = std.fmt.parseInt(i64, raw, 0) catch break :try_int;
-                    return Value{ .int = int };
-                }
-
-                try_float: {
-                    const float = std.fmt.parseFloat(f64, raw) catch break :try_float;
-                    return Value{ .float = float };
-                }
-
-                if (raw.len > 0 and raw.len <= longestBooleanValueString) {
-                    var buffer: [longestBooleanValueString]u8 = undefined;
-                    const lower_raw = std.ascii.lowerString(&buffer, raw);
-
-                    for (supportedTruthyBooleanValue) |v| {
-                        if (std.mem.eql(u8, v, lower_raw)) {
-                            return Value{ .boolean = true };
-                        }
-                    }
-
-                    for (supportedFalsyBooleanValue) |v| {
-                        if (std.mem.eql(u8, v, lower_raw)) {
-                            return Value{ .boolean = false };
-                        }
-                    }
-                }
-
-                return Value{ .string = try gpa.dupe(u8, raw) };
+                return Value{ .scalar = try gpa.dupe(u8, raw) };
             },
         }
     }

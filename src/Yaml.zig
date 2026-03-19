@@ -245,7 +245,7 @@ pub const YamlError = error{
 
 pub const StringifyError = error{
     OutOfMemory,
-} || YamlError || std.fs.File.WriteError;
+} || YamlError || std.Io.Writer.Error;
 
 pub const List = []Value;
 pub const Map = std.StringArrayHashMapUnmanaged(Value);
@@ -328,7 +328,7 @@ pub const Value = union(enum) {
                 const first = list[0];
                 if (first.isCompound()) {
                     for (list, 0..) |elem, i| {
-                        try writer.writeByteNTimes(' ', args.indentation);
+                        try writer.splatByteAll(' ', args.indentation);
                         try writer.writeAll("- ");
                         try elem.stringify(writer, .{
                             .indentation = args.indentation + 2,
@@ -357,7 +357,7 @@ pub const Value = union(enum) {
                 var i: usize = 0;
                 for (map.keys(), map.values()) |key, value| {
                     if (!args.should_inline_first_key or i != 0) {
-                        try writer.writeByteNTimes(' ', args.indentation);
+                        try writer.splatByteAll(' ', args.indentation);
                     }
                     try writer.print("{s}: ", .{key});
 

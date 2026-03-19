@@ -4,3 +4,5 @@ deps.zig
 zig-cache
 .zig-cache
 zig-out
+.zig-cache/
+zig-pkg/

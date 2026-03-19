@@ -560,10 +560,10 @@ test "duplicate map keys" {
 }
 
 fn testStringify(expected: []const u8, input: anytype) !void {
-    var output = std.ArrayList(u8).init(testing.allocator);
-    defer output.deinit();
-
-    try stringify(testing.allocator, input, output.writer());
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    try stringify(testing.allocator, input, &aw.writer);
+    var output = aw.toArrayList();
+    defer output.deinit(testing.allocator);
     try testing.expectEqualStrings(expected, output.items);
 }
 

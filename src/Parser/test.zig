@@ -628,9 +628,10 @@ fn parseError2(source: []const u8, comptime format: []const u8, args: anytype) !
     defer bundle.deinit(testing.allocator);
     try testing.expect(bundle.errorMessageCount() > 0);
 
-    var given: std.ArrayListUnmanaged(u8) = .empty;
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    try bundle.renderToWriter(.{}, &aw.writer);
+    var given = aw.toArrayList();
     defer given.deinit(testing.allocator);
-    try bundle.renderToWriter(.{ .ttyconf = .no_color }, given.writer(testing.allocator));
 
     const expected = try std.fmt.allocPrint(testing.allocator, format, args);
     defer testing.allocator.free(expected);

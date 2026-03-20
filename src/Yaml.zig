@@ -104,8 +104,23 @@ fn parseValue(self: Yaml, arena: Allocator, comptime T: type, value: Value) Erro
         .pointer => if (value.asList()) |list| {
             return self.parsePointer(arena, T, .{ .list = list });
         } else |_| {
-            const string = try value.asString();
-            return self.parsePointer(arena, T, .{ .string = try arena.dupe(u8, string) });
+            // Handle all value types that can be treated as strings
+            const string = switch (value) {
+                .string => |s| try arena.dupe(u8, s),
+                .boolean => |b| try arena.dupe(u8, if (b) "true" else "false"),
+                .int => |i| blk: {
+                    var buf: [64]u8 = undefined;
+                    const s = std.fmt.bufPrint(&buf, "{d}", .{i}) catch return error.TypeMismatch;
+                    break :blk try arena.dupe(u8, s);
+                },
+                .float => |fl| blk: {
+                    var buf: [256]u8 = undefined;
+                    const s = std.fmt.bufPrint(&buf, "{d}", .{fl}) catch return error.TypeMismatch;
+                    break :blk try arena.dupe(u8, s);
+                },
+                else => return error.TypeMismatch,
+            };
+            return self.parsePointer(arena, T, .{ .string = string });
         },
         .void => error.TypeMismatch,
         .optional => unreachable,

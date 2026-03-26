@@ -471,7 +471,7 @@ pub const Value = union(enum) {
                 return Value{ .map = out_map };
             },
             .list_empty => {
-                return Value{ .list = &.{} };
+                return Value{ .list = try gpa.alloc(Value, 0) };
             },
             .list_one => {
                 const value_index = tree.nodeData(node_index).node;

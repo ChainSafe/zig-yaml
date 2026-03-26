@@ -856,3 +856,31 @@ test "null in typed struct with optional" {
     try testing.expect(result.value == null);
 }
 
+test "special float values" {
+    const source =
+        \\pos_inf: .inf
+        \\neg_inf: -.inf
+        \\not_a_number: .nan
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    // In the scalar-based model, these are raw strings
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const map = yaml.docs.items[0].map;
+
+    try testing.expectEqualStrings(".inf", try map.get("pos_inf").?.asScalar());
+    try testing.expectEqualStrings("-.inf", try map.get("neg_inf").?.asScalar());
+    try testing.expectEqualStrings(".nan", try map.get("not_a_number").?.asScalar());
+
+    // Typed parsing should handle these correctly
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const result = try yaml.parse(arena.allocator(), struct { pos_inf: f64, neg_inf: f64, not_a_number: f64 });
+    try testing.expect(std.math.isPositiveInf(result.pos_inf));
+    try testing.expect(std.math.isNegativeInf(result.neg_inf));
+    try testing.expect(std.math.isNan(result.not_a_number));
+}

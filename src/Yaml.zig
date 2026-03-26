@@ -118,6 +118,14 @@ fn parseInt(self: Yaml, comptime T: type, value: Value) Error!T {
 fn parseFloat(self: Yaml, comptime T: type, value: Value) Error!T {
     _ = self;
     const scalar = try value.asScalar();
+    // YAML 1.2 special float values
+    if (std.mem.eql(u8, scalar, ".inf") or std.mem.eql(u8, scalar, ".Inf") or std.mem.eql(u8, scalar, ".INF")) {
+        return std.math.inf(T);
+    } else if (std.mem.eql(u8, scalar, "-.inf") or std.mem.eql(u8, scalar, "-.Inf") or std.mem.eql(u8, scalar, "-.INF")) {
+        return -std.math.inf(T);
+    } else if (std.mem.eql(u8, scalar, ".nan") or std.mem.eql(u8, scalar, ".NaN") or std.mem.eql(u8, scalar, ".NAN")) {
+        return std.math.nan(T);
+    }
     return try std.fmt.parseFloat(T, scalar);
 }
 

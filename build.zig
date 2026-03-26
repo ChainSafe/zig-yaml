@@ -33,6 +33,22 @@ pub fn build(b: *std.Build) void {
     });
     test_step.dependOn(&b.addRunArtifact(e2e_tests).step);
 
-    // TODO: spec tests need full std.fs → std.Io.Dir migration in test/spec.zig
-    // const enable_spec_tests = b.option(bool, "enable-spec-tests", "Enable YAML Test Suite") orelse false;
+    // YAML Test Suite spec tests
+    const enable_spec_tests = b.option(bool, "enable-spec-tests", "Enable YAML Test Suite") orelse false;
+    if (enable_spec_tests) {
+        const SpecTest = @import("test/spec.zig");
+        const spec_test = SpecTest.create(b);
+
+        const spec_test_module = b.createModule(.{
+            .root_source_file = spec_test.path(),
+            .target = target,
+            .optimize = optimize,
+        });
+        spec_test_module.addImport("yaml", yaml_module);
+
+        const spec_tests = b.addTest(.{
+            .root_module = spec_test_module,
+        });
+        test_step.dependOn(&b.addRunArtifact(spec_tests).step);
+    }
 }

@@ -344,7 +344,7 @@ pub const Value = union(enum) {
 
     pub fn stringify(self: Value, writer: anytype, args: StringifyArgs) StringifyError!void {
         switch (self) {
-            .empty => return,
+            .empty => return writer.writeAll("null"),
             .scalar => |scalar| return writer.print("{s}", .{scalar}),
             .list => |list| {
                 const len = list.len;

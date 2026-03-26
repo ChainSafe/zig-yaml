@@ -884,3 +884,11 @@ test "special float values" {
     try testing.expect(std.math.isNegativeInf(result.neg_inf));
     try testing.expect(std.math.isNan(result.not_a_number));
 }
+
+test "stringify null and special floats" {
+    // null optional encodes as nothing (key omitted in struct)
+    try testStringify("", @as(?u64, null));
+    try testStringify(
+        \\a: 1
+    , struct { a: ?u64, b: ?u64 }{ .a = 1, .b = null });
+}

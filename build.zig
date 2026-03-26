@@ -33,6 +33,19 @@ pub fn build(b: *std.Build) void {
     });
     test_step.dependOn(&b.addRunArtifact(e2e_tests).step);
 
+    // Comprehensive unit tests
+    const comprehensive_test_module = b.createModule(.{
+        .root_source_file = b.path("test/comprehensive_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    comprehensive_test_module.addImport("yaml", yaml_module);
+
+    const comprehensive_tests = b.addTest(.{
+        .root_module = comprehensive_test_module,
+    });
+    test_step.dependOn(&b.addRunArtifact(comprehensive_tests).step);
+
     // YAML Test Suite spec tests
     const enable_spec_tests = b.option(bool, "enable-spec-tests", "Enable YAML Test Suite") orelse false;
     if (enable_spec_tests) {

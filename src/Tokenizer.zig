@@ -271,14 +271,14 @@ pub fn next(self: *Tokenizer) Token {
             },
 
             .double_quoted => switch (c) {
+                '\\' => {
+                    // Skip the next character (it's escaped)
+                    self.index += 1;
+                },
                 '"' => {
-                    if (stringMatchesPattern("\\", self.buffer[self.index - 1 ..])) {
-                        self.index += 1;
-                    } else {
-                        result.id = .double_quoted;
-                        self.index += 1;
-                        break;
-                    }
+                    result.id = .double_quoted;
+                    self.index += 1;
+                    break;
                 },
                 else => {},
             },
@@ -653,6 +653,27 @@ test "unquoted literal containing colon" {
         .map_value_ind,
         .space,
         .literal, // val::ue
+        .eof,
+    });
+}
+
+test "double quoted with escaped backslash before closing quote" {
+    // The string "hello\\" should tokenize as a single double_quoted token.
+    // Previously, the tokenizer checked if the byte before '"' was '\',
+    // which failed for '\\\"' (escaped backslash followed by closing quote).
+    try testExpected(
+        \\"hello\\"
+    , &[_]Token.Id{
+        .double_quoted,
+        .eof,
+    });
+}
+
+test "double quoted with various escapes" {
+    try testExpected(
+        \\"escaped: \\, \", \n, \t"
+    , &[_]Token.Id{
+        .double_quoted,
         .eof,
     });
 }

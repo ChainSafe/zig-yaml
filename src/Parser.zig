@@ -743,6 +743,8 @@ fn parseDoubleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!
     assert(raw[0] == '"' and raw[raw.len - 1] == '"');
     const raw_no_quotes = raw[1 .. raw.len - 1];
 
+    // Escaped sequences can produce multi-byte UTF-8, so allocate extra.
+    // Worst case: \UXXXXXXXX produces 4 UTF-8 bytes from 10 input chars, so input len is enough.
     try self.string_bytes.ensureUnusedCapacity(gpa, raw_no_quotes.len);
     var string: String = .{
         .index = @enumFromInt(@as(u32, @intCast(self.string_bytes.items.len))),
@@ -768,23 +770,71 @@ fn parseDoubleQuoted(self: *Parser, gpa: Allocator, raw: []const u8) ParseError!
                     string.len += 1;
                 },
             },
-            .escape => switch (c) {
-                'n' => {
-                    state = .start;
-                    self.string_bytes.appendAssumeCapacity('\n');
+            .escape => {
+                state = .start;
+                // YAML 1.2 escape sequences (spec section 5.7)
+                const replacement: ?u8 = switch (c) {
+                    '0' => 0x00, // null
+                    'a' => 0x07, // bell
+                    'b' => 0x08, // backspace
+                    't', 0x09 => 0x09, // tab
+                    'n' => 0x0A, // line feed
+                    'v' => 0x0B, // vertical tab
+                    'f' => 0x0C, // form feed
+                    'r' => 0x0D, // carriage return
+                    'e' => 0x1B, // escape
+                    ' ' => 0x20, // space
+                    '"' => '"',
+                    '/' => '/',
+                    '\\' => '\\',
+                    'N' => null, // next line (U+0085) - handle as unicode below
+                    '_' => null, // non-breaking space (U+00A0) - handle as unicode below
+                    'L' => null, // line separator (U+2028) - handle as unicode below
+                    'P' => null, // paragraph separator (U+2029) - handle as unicode below
+                    'x' => null, // \xNN
+                    'u' => null, // \uNNNN
+                    'U' => null, // \UNNNNNNNN
+                    else => return error.InvalidEscapeSequence,
+                };
+
+                if (replacement) |byte| {
+                    self.string_bytes.appendAssumeCapacity(byte);
                     string.len += 1;
-                },
-                't' => {
-                    state = .start;
-                    self.string_bytes.appendAssumeCapacity('\t');
-                    string.len += 1;
-                },
-                '"' => {
-                    state = .start;
-                    self.string_bytes.appendAssumeCapacity('"');
-                    string.len += 1;
-                },
-                else => return error.InvalidEscapeSequence,
+                } else {
+                    // Unicode escapes and special Unicode chars
+                    const codepoint: u21 = switch (c) {
+                        'N' => 0x0085, // next line
+                        '_' => 0x00A0, // non-breaking space
+                        'L' => 0x2028, // line separator
+                        'P' => 0x2029, // paragraph separator
+                        'x' => blk: {
+                            if (index + 2 >= raw_no_quotes.len) return error.InvalidEscapeSequence;
+                            const hex = raw_no_quotes[index + 1 ..][0..2];
+                            index += 2;
+                            break :blk std.fmt.parseInt(u21, hex, 16) catch return error.InvalidEscapeSequence;
+                        },
+                        'u' => blk: {
+                            if (index + 4 >= raw_no_quotes.len) return error.InvalidEscapeSequence;
+                            const hex = raw_no_quotes[index + 1 ..][0..4];
+                            index += 4;
+                            break :blk std.fmt.parseInt(u21, hex, 16) catch return error.InvalidEscapeSequence;
+                        },
+                        'U' => blk: {
+                            if (index + 8 >= raw_no_quotes.len) return error.InvalidEscapeSequence;
+                            const hex = raw_no_quotes[index + 1 ..][0..8];
+                            index += 8;
+                            break :blk std.fmt.parseInt(u21, hex, 16) catch return error.InvalidEscapeSequence;
+                        },
+                        else => unreachable,
+                    };
+                    // Encode as UTF-8
+                    var buf: [4]u8 = undefined;
+                    const utf8_len = std.unicode.utf8Encode(codepoint, &buf) catch return error.InvalidEscapeSequence;
+                    // May need more capacity for multi-byte sequences
+                    try self.string_bytes.ensureUnusedCapacity(gpa, utf8_len);
+                    self.string_bytes.appendSliceAssumeCapacity(buf[0..utf8_len]);
+                    string.len += @intCast(utf8_len);
+                }
             },
         }
     }

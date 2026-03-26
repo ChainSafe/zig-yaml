@@ -656,3 +656,77 @@ test "stringify a list" {
     const arr: [3]i64 = .{ 1, 2, 3 };
     try testStringify("[ 1, 2, 3 ]", arr);
 }
+
+test "double quoted escape sequences - backslash and slash" {
+    const source =
+        \\- "backslash: \\"
+        \\- "slash: \/"
+        \\- "null: \0"
+        \\- "bell: \a"
+        \\- "backspace: \b"
+        \\- "escape: \e"
+        \\- "form feed: \f"
+        \\- "carriage return: \r"
+        \\- "vertical tab: \v"
+        \\- "space: \ "
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const arr = try yaml.parse(arena.allocator(), [10][]const u8);
+    try testing.expectEqualStrings("backslash: \\", arr[0]);
+    try testing.expectEqualStrings("slash: /", arr[1]);
+    try testing.expectEqualStrings("null: \x00", arr[2]);
+    try testing.expectEqualStrings("bell: \x07", arr[3]);
+    try testing.expectEqualStrings("backspace: \x08", arr[4]);
+    try testing.expectEqualStrings("escape: \x1b", arr[5]);
+    try testing.expectEqualStrings("form feed: \x0c", arr[6]);
+    try testing.expectEqualStrings("carriage return: \r", arr[7]);
+    try testing.expectEqualStrings("vertical tab: \x0b", arr[8]);
+    try testing.expectEqualStrings("space:  ", arr[9]);
+}
+
+test "double quoted unicode escape sequences" {
+    const source =
+        \\- "\x41"
+        \\- "\u0041"
+        \\- "\U00000041"
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const arr = try yaml.parse(arena.allocator(), [3][]const u8);
+    // All should produce 'A' (U+0041)
+    try testing.expectEqualStrings("A", arr[0]);
+    try testing.expectEqualStrings("A", arr[1]);
+    try testing.expectEqualStrings("A", arr[2]);
+}
+
+test "double quoted escaped backslash before closing quote" {
+    // This was the original bug: "hello\\" should parse as hello\ 
+    const source =
+        \\- "hello\\"
+        \\- "path\\to\\file"
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const arr = try yaml.parse(arena.allocator(), [2][]const u8);
+    try testing.expectEqualStrings("hello\\", arr[0]);
+    try testing.expectEqualStrings("path\\to\\file", arr[1]);
+}

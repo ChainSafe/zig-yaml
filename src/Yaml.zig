@@ -166,6 +166,14 @@ fn parseUnion(self: Yaml, arena: Allocator, comptime T: type, value: Value) Erro
 
 fn parseOptional(self: Yaml, arena: Allocator, comptime T: type, value: ?Value) Error!T {
     const unwrapped = value orelse return null;
+    // YAML null/empty values map to null for optional types
+    if (unwrapped == .empty) return null;
+    if (unwrapped == .scalar) {
+        const raw = unwrapped.scalar;
+        if (raw.len == 0 or std.mem.eql(u8, raw, "~") or std.ascii.eqlIgnoreCase(raw, "null")) {
+            return null;
+        }
+    }
     const opt_info = @typeInfo(T).optional;
     return @as(T, try self.parseValue(arena, opt_info.child, unwrapped));
 }

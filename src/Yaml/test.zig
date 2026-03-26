@@ -730,3 +730,129 @@ test "double quoted escaped backslash before closing quote" {
     try testing.expectEqualStrings("hello\\", arr[0]);
     try testing.expectEqualStrings("path\\to\\file", arr[1]);
 }
+
+test "quoted strings are not type-coerced" {
+    // YAML 1.2 spec: quoted scalars are always strings
+    const source =
+        \\a: "123"
+        \\b: '456'
+        \\c: "true"
+        \\d: 'false'
+        \\e: "1.5"
+        \\f: '0x10'
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const map = yaml.docs.items[0].map;
+
+    // All quoted values should be strings, not numbers or booleans
+    try testing.expectEqualStrings("123", try map.get("a").?.asScalar());
+    try testing.expectEqualStrings("456", try map.get("b").?.asScalar());
+    try testing.expectEqualStrings("true", try map.get("c").?.asScalar());
+    try testing.expectEqualStrings("false", try map.get("d").?.asScalar());
+    try testing.expectEqualStrings("1.5", try map.get("e").?.asScalar());
+    try testing.expectEqualStrings("0x10", try map.get("f").?.asScalar());
+}
+
+test "null values" {
+    const source =
+        \\a: null
+        \\b: ~
+        \\c: Null
+        \\d: NULL
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const map = yaml.docs.items[0].map;
+
+    try testing.expectEqualStrings("null", try map.get("a").?.asScalar());
+    try testing.expectEqualStrings("~", try map.get("b").?.asScalar());
+    try testing.expectEqualStrings("Null", try map.get("c").?.asScalar());
+    try testing.expectEqualStrings("NULL", try map.get("d").?.asScalar());
+}
+
+test "flow mapping" {
+    const source =
+        \\data: {a: 1, b: hello, c: true}
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const outer = yaml.docs.items[0].map;
+    const inner = outer.get("data").?.map;
+
+    try testing.expectEqualStrings("1", try inner.get("a").?.asScalar());
+    try testing.expectEqualStrings("hello", try inner.get("b").?.asScalar());
+    try testing.expectEqualStrings("true", try inner.get("c").?.asScalar());
+}
+
+test "nested flow mapping" {
+    const source =
+        \\{a: {x: 1}, b: {y: 2}}
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const outer = yaml.docs.items[0].map;
+
+    const a = outer.get("a").?.map;
+    try testing.expectEqualStrings("1", try a.get("x").?.asScalar());
+
+    const b = outer.get("b").?.map;
+    try testing.expectEqualStrings("2", try b.get("y").?.asScalar());
+}
+
+test "tilde null in list" {
+    const source =
+        \\- ~
+        \\- null
+        \\- actual_value
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const list = yaml.docs.items[0].list;
+    try testing.expectEqual(@as(usize, 3), list.len);
+    try testing.expectEqualStrings("~", try list[0].asScalar());
+    try testing.expectEqualStrings("null", try list[1].asScalar());
+    try testing.expectEqualStrings("actual_value", try list[2].asScalar());
+}
+
+test "null in typed struct with optional" {
+    const source =
+        \\name: hello
+        \\value: ~
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const result = try yaml.parse(arena.allocator(), struct {
+        name: []const u8,
+        value: ?[]const u8,
+    });
+    try testing.expectEqualStrings("hello", result.name);
+    try testing.expect(result.value == null);
+}
+

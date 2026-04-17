@@ -20,7 +20,6 @@ fn loadFromFile(file_path: []const u8) !Yaml {
 }
 
 test "simple" {
-    // ... rest is same
     const Simple = struct {
         names: []const []const u8,
         numbers: []const i16,

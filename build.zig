@@ -4,8 +4,6 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const enable_logging = b.option(bool, "log", "Whether to enable logging") orelse false;
-    _ = enable_logging;
     const yaml_module = b.addModule("yaml", .{
         .root_source_file = b.path("src/lib.zig"),
     });

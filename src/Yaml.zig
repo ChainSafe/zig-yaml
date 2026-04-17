@@ -178,7 +178,7 @@ fn parseOptional(self: Yaml, arena: Allocator, comptime T: type, value: ?Value) 
     if (unwrapped == .empty) return null;
     if (unwrapped == .scalar) {
         const raw = unwrapped.scalar;
-        if (raw.len == 0 or std.mem.eql(u8, raw, "~") or std.ascii.eqlIgnoreCase(raw, "null")) {
+        if (std.mem.eql(u8, raw, "~") or std.ascii.eqlIgnoreCase(raw, "null")) {
             return null;
         }
     }

@@ -272,8 +272,16 @@ pub fn next(self: *Tokenizer) Token {
 
             .double_quoted => switch (c) {
                 '\\' => {
-                    // Skip the next character (it's escaped)
-                    self.index += 1;
+                    // Skip the next character only when it exists.
+                    // A trailing backslash means the quoted token reaches
+                    // end-of-buffer, and self.index must not move past it.
+                    if (self.index + 1 < self.buffer.len) {
+                        self.index += 1;
+                    } else {
+                        result.id = .double_quoted;
+                        self.index = self.buffer.len;
+                        break;
+                    }
                 },
                 '"' => {
                     result.id = .double_quoted;

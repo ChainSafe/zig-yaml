@@ -9,10 +9,8 @@ const Yaml = @import("yaml").Yaml;
 const gpa = testing.allocator;
 
 fn loadFromFile(file_path: []const u8) !Yaml {
-    const file = try std.fs.cwd().openFile(file_path, .{});
-    defer file.close();
-
-    const source = try file.readToEndAlloc(gpa, std.math.maxInt(u32));
+    const io = std.testing.io;
+    const source = try std.Io.Dir.cwd().readFileAlloc(io, file_path, gpa, .unlimited);
     defer gpa.free(source);
 
     var yaml: Yaml = .{ .source = source };
@@ -89,8 +87,8 @@ const LibTbd = struct {
     },
     install_name: []const u8,
     current_version: union(enum) {
-        string: []const u8,
         int: usize,
+        string: []const u8,
     },
     reexported_libraries: ?[]const struct {
         targets: []const []const u8,
@@ -128,19 +126,15 @@ const LibTbd = struct {
 
         if (self.reexported_libraries) |reexported_libraries| {
             const o_reexported_libraries = other.reexported_libraries orelse return false;
-
             if (reexported_libraries.len != o_reexported_libraries.len) return false;
-
             for (reexported_libraries, 0..) |reexport, i| {
                 const o_reexport = o_reexported_libraries[i];
                 if (reexport.targets.len != o_reexport.targets.len) return false;
                 if (reexport.libraries.len != o_reexport.libraries.len) return false;
-
                 for (reexport.targets, 0..) |target, j| {
                     const o_target = o_reexport.targets[j];
                     if (!mem.eql(u8, target, o_target)) return false;
                 }
-
                 for (reexport.libraries, 0..) |library, j| {
                     const o_library = o_reexport.libraries[j];
                     if (!mem.eql(u8, library, o_library)) return false;
@@ -150,40 +144,32 @@ const LibTbd = struct {
 
         if (self.parent_umbrella) |parent_umbrella| {
             const o_parent_umbrella = other.parent_umbrella orelse return false;
-
             if (parent_umbrella.len != o_parent_umbrella.len) return false;
-
             for (parent_umbrella, 0..) |pumbrella, i| {
                 const o_pumbrella = o_parent_umbrella[i];
                 if (pumbrella.targets.len != o_pumbrella.targets.len) return false;
-
                 for (pumbrella.targets, 0..) |target, j| {
                     const o_target = o_pumbrella.targets[j];
                     if (!mem.eql(u8, target, o_target)) return false;
                 }
-
                 if (!mem.eql(u8, pumbrella.umbrella, o_pumbrella.umbrella)) return false;
             }
         }
 
         if (self.exports.len != other.exports.len) return false;
-
         for (self.exports, 0..) |exp, i| {
             const o_exp = other.exports[i];
             if (exp.targets.len != o_exp.targets.len) return false;
             if (exp.symbols.len != o_exp.symbols.len) return false;
-
             for (exp.targets, 0..) |target, j| {
                 const o_target = o_exp.targets[j];
                 if (!mem.eql(u8, target, o_target)) return false;
             }
-
             for (exp.symbols, 0..) |symbol, j| {
                 const o_symbol = o_exp.symbols[j];
                 if (!mem.eql(u8, symbol, o_symbol)) return false;
             }
         }
-
         return true;
     }
 };
@@ -199,12 +185,8 @@ test "single lib tbd" {
     const expected = LibTbd{
         .tbd_version = 4,
         .targets = &[_][]const u8{
-            "x86_64-macos",
-            "x86_64-maccatalyst",
-            "arm64-macos",
-            "arm64-maccatalyst",
-            "arm64e-macos",
-            "arm64e-maccatalyst",
+            "x86_64-macos", "x86_64-maccatalyst", "arm64-macos",
+            "arm64-maccatalyst", "arm64e-macos", "arm64e-maccatalyst",
         },
         .uuids = &.{
             .{ .target = "x86_64-macos", .value = "F86CC732-D5E4-30B5-AA7D-167DF5EC2708" },
@@ -219,15 +201,11 @@ test "single lib tbd" {
         .reexported_libraries = &.{
             .{
                 .targets = &.{
-                    "x86_64-macos",
-                    "x86_64-maccatalyst",
-                    "arm64-macos",
-                    "arm64-maccatalyst",
-                    "arm64e-macos",
-                    "arm64e-maccatalyst",
+                    "x86_64-macos", "x86_64-maccatalyst", "arm64-macos",
+                    "arm64-maccatalyst", "arm64e-macos", "arm64e-maccatalyst",
                 },
                 .libraries = &.{
-                    "/usr/lib/system/libcache.dylib",       "/usr/lib/system/libcommonCrypto.dylib",
+                    "/usr/lib/system/libcache.dylib", "/usr/lib/system/libcommonCrypto.dylib",
                     "/usr/lib/system/libcompiler_rt.dylib", "/usr/lib/system/libcopyfile.dylib",
                     "/usr/lib/system/libxpc.dylib",
                 },
@@ -235,26 +213,19 @@ test "single lib tbd" {
         },
         .exports = &.{
             .{
-                .targets = &.{
-                    "x86_64-maccatalyst",
-                    "x86_64-macos",
-                },
+                .targets = &.{ "x86_64-maccatalyst", "x86_64-macos" },
                 .symbols = &.{
-                    "R8289209$_close", "R8289209$_fork", "R8289209$_fsync", "R8289209$_getattrlist",
-                    "R8289209$_write",
+                    "R8289209$_close", "R8289209$_fork", "R8289209$_fsync",
+                    "R8289209$_getattrlist", "R8289209$_write",
                 },
             },
             .{
                 .targets = &.{
-                    "x86_64-maccatalyst",
-                    "x86_64-macos",
-                    "arm64e-maccatalyst",
-                    "arm64e-macos",
-                    "arm64-macos",
-                    "arm64-maccatalyst",
+                    "x86_64-maccatalyst", "x86_64-macos", "arm64e-maccatalyst",
+                    "arm64e-macos", "arm64-macos", "arm64-maccatalyst",
                 },
                 .symbols = &.{
-                    "___crashreporter_info__",   "_libSystem_atfork_child", "_libSystem_atfork_parent",
+                    "___crashreporter_info__", "_libSystem_atfork_child", "_libSystem_atfork_parent",
                     "_libSystem_atfork_prepare", "_mach_init_routine",
                 },
             },

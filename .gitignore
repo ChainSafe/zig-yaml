@@ -1,6 +1,7 @@
-.gyro
-.zigmod
+.gyro/
+.zigmod/
 deps.zig
-zig-cache
-.zig-cache
-zig-out
+zig-cache/
+.zig-cache/
+zig-out/
+zig-pkg/

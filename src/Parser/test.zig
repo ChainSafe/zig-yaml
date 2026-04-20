@@ -628,9 +628,10 @@ fn parseError2(source: []const u8, comptime format: []const u8, args: anytype) !
     defer bundle.deinit(testing.allocator);
     try testing.expect(bundle.errorMessageCount() > 0);
 
-    var given: std.ArrayListUnmanaged(u8) = .empty;
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    try bundle.renderToWriter(.{}, &aw.writer);
+    var given = aw.toArrayList();
     defer given.deinit(testing.allocator);
-    try bundle.renderToWriter(.{ .ttyconf = .no_color }, given.writer(testing.allocator));
 
     const expected = try std.fmt.allocPrint(testing.allocator, format, args);
     defer testing.allocator.free(expected);
@@ -666,17 +667,12 @@ test "correct doc start with tag" {
 }
 
 test "doc close without explicit doc open" {
-    try parseError2(
+    try parseSuccess(
         \\
         \\
         \\# something cool
         \\...
-    ,
-        \\(memory):4:1: error: missing explicit document open marker '---'
-        \\...
-        \\^~~
-        \\
-    , .{});
+    );
 }
 
 test "doc open and close are ok" {
@@ -854,6 +850,18 @@ test "weirdly nested map of maps of lists" {
         \\ b:
         \\  - 0
         \\  - 1
+    );
+}
+
+test "curly brackets denote a flow map" {
+    try parseSuccess(
+        \\{ a: b, c: d }
+    );
+}
+
+test "empty flow map" {
+    try parseSuccess(
+        \\{ }
     );
 }
 

@@ -271,14 +271,22 @@ pub fn next(self: *Tokenizer) Token {
             },
 
             .double_quoted => switch (c) {
-                '"' => {
-                    if (stringMatchesPattern("\\", self.buffer[self.index - 1 ..])) {
+                '\\' => {
+                    // Skip the next character only when it exists.
+                    // A trailing backslash means the quoted token reaches
+                    // end-of-buffer, and self.index must not move past it.
+                    if (self.index + 1 < self.buffer.len) {
                         self.index += 1;
                     } else {
                         result.id = .double_quoted;
-                        self.index += 1;
+                        self.index = self.buffer.len;
                         break;
                     }
+                },
+                '"' => {
+                    result.id = .double_quoted;
+                    self.index += 1;
+                    break;
                 },
                 else => {},
             },
@@ -329,12 +337,12 @@ fn testExpected(source: []const u8, expected: []const Token.Id) !void {
         .buffer = source,
     };
 
-    var given = std.ArrayList(Token.Id).init(testing.allocator);
-    defer given.deinit();
+    var given = std.ArrayList(Token.Id).empty;
+    defer given.deinit(testing.allocator);
 
     while (true) {
         const token = tokenizer.next();
-        try given.append(token.id);
+        try given.append(testing.allocator, token.id);
         if (token.id == .eof) break;
     }
 
@@ -653,6 +661,27 @@ test "unquoted literal containing colon" {
         .map_value_ind,
         .space,
         .literal, // val::ue
+        .eof,
+    });
+}
+
+test "double quoted with escaped backslash before closing quote" {
+    // The string "hello\\" should tokenize as a single double_quoted token.
+    // Previously, the tokenizer checked if the byte before '"' was '\',
+    // which failed for '\\\"' (escaped backslash followed by closing quote).
+    try testExpected(
+        \\"hello\\"
+    , &[_]Token.Id{
+        .double_quoted,
+        .eof,
+    });
+}
+
+test "double quoted with various escapes" {
+    try testExpected(
+        \\"escaped: \\, \", \n, \t"
+    , &[_]Token.Id{
+        .double_quoted,
         .eof,
     });
 }

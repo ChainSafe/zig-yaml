@@ -22,9 +22,9 @@ test "simple list" {
     const list = yaml.docs.items[0].list;
     try testing.expectEqual(list.len, 3);
 
-    try testing.expectEqualStrings("a", list[0].string);
-    try testing.expectEqualStrings("b", list[1].string);
-    try testing.expectEqualStrings("c", list[2].string);
+    try testing.expectEqualStrings("a", list[0].scalar);
+    try testing.expectEqualStrings("b", list[1].scalar);
+    try testing.expectEqualStrings("c", list[2].scalar);
 }
 
 test "simple list typed as array of strings" {
@@ -126,7 +126,25 @@ test "simple map untyped" {
 
     const map = yaml.docs.items[0].map;
     try testing.expect(map.contains("a"));
-    try testing.expectEqual(@as(i64, 0), map.get("a").?.int);
+    try testing.expectEqualStrings("0", map.get("a").?.scalar);
+}
+
+test "flow map untyped" {
+    const source =
+        \\{a: 0, b: 1}
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+
+    const map = yaml.docs.items[0].map;
+    try testing.expect(map.contains("a"));
+    try testing.expect(map.contains("b"));
+    try testing.expectEqualStrings("0", map.get("a").?.scalar);
+    try testing.expectEqualStrings("1", map.get("b").?.scalar);
 }
 
 test "simple map untyped with a list of maps" {
@@ -150,12 +168,12 @@ test "simple map untyped with a list of maps" {
     try testing.expect(map.contains("a"));
     try testing.expect(map.contains("b"));
     try testing.expect(map.contains("c"));
-    try testing.expectEqual(@as(i64, 0), map.get("a").?.int);
-    try testing.expectEqual(@as(i64, 1), map.get("c").?.int);
-    try testing.expectEqual(@as(i64, 1), map.get("b").?.list[0].map.get("foo").?.int);
-    try testing.expectEqual(@as(i64, 2), map.get("b").?.list[0].map.get("bar").?.int);
-    try testing.expectEqual(@as(i64, 3), map.get("b").?.list[1].map.get("foo").?.int);
-    try testing.expectEqual(@as(i64, 4), map.get("b").?.list[1].map.get("bar").?.int);
+    try testing.expectEqualStrings("0", map.get("a").?.scalar);
+    try testing.expectEqualStrings("1", map.get("c").?.scalar);
+    try testing.expectEqualStrings("1", map.get("b").?.list[0].map.get("foo").?.scalar);
+    try testing.expectEqualStrings("2", map.get("b").?.list[0].map.get("bar").?.scalar);
+    try testing.expectEqualStrings("3", map.get("b").?.list[1].map.get("foo").?.scalar);
+    try testing.expectEqualStrings("4", map.get("b").?.list[1].map.get("bar").?.scalar);
 }
 
 test "simple map untyped with a list of maps. no indent" {
@@ -174,8 +192,8 @@ test "simple map untyped with a list of maps. no indent" {
     const map = yaml.docs.items[0].map;
     try testing.expect(map.contains("b"));
     try testing.expect(map.contains("c"));
-    try testing.expectEqual(@as(i64, 1), map.get("c").?.int);
-    try testing.expectEqual(@as(i64, 1), map.get("b").?.list[0].map.get("foo").?.int);
+    try testing.expectEqualStrings("1", map.get("c").?.scalar);
+    try testing.expectEqualStrings("1", map.get("b").?.list[0].map.get("foo").?.scalar);
 }
 
 test "simple map untyped with a list of maps. no indent 2" {
@@ -199,12 +217,12 @@ test "simple map untyped with a list of maps. no indent 2" {
     try testing.expect(map.contains("a"));
     try testing.expect(map.contains("b"));
     try testing.expect(map.contains("c"));
-    try testing.expectEqual(@as(i64, 0), map.get("a").?.int);
-    try testing.expectEqual(@as(i64, 1), map.get("c").?.int);
-    try testing.expectEqual(@as(i64, 1), map.get("b").?.list[0].map.get("foo").?.int);
-    try testing.expectEqual(@as(i64, 2), map.get("b").?.list[0].map.get("bar").?.int);
-    try testing.expectEqual(@as(i64, 3), map.get("b").?.list[1].map.get("foo").?.int);
-    try testing.expectEqual(@as(i64, 4), map.get("b").?.list[1].map.get("bar").?.int);
+    try testing.expectEqualStrings("0", map.get("a").?.scalar);
+    try testing.expectEqualStrings("1", map.get("c").?.scalar);
+    try testing.expectEqualStrings("1", map.get("b").?.list[0].map.get("foo").?.scalar);
+    try testing.expectEqualStrings("2", map.get("b").?.list[0].map.get("bar").?.scalar);
+    try testing.expectEqualStrings("3", map.get("b").?.list[1].map.get("foo").?.scalar);
+    try testing.expectEqualStrings("4", map.get("b").?.list[1].map.get("bar").?.scalar);
 }
 
 test "simple map typed" {
@@ -355,6 +373,21 @@ test "double quoted string" {
         \\let's have
         \\some fun!
     , arr[3]);
+}
+
+test "hex string" {
+    const yml_str =
+        \\hex_str: "0xdeadbeef"
+    ;
+
+    var value = Yaml{ .source = yml_str };
+    try value.load(std.testing.allocator);
+    defer value.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualDeep(
+        Yaml.Value{ .scalar = "0xdeadbeef" },
+        value.docs.items[0].map.get("hex_str").?,
+    );
 }
 
 test "multidoc typed as a slice of structs" {
@@ -544,7 +577,7 @@ test "demoting floats to ints in a list is an error" {
     var arena = Arena.init(testing.allocator);
     defer arena.deinit();
 
-    try testing.expectError(error.TypeMismatch, yaml.parse(arena.allocator(), struct {
+    try testing.expectError(error.InvalidCharacter, yaml.parse(arena.allocator(), struct {
         a_list: []const u64,
     }));
 }
@@ -560,10 +593,10 @@ test "duplicate map keys" {
 }
 
 fn testStringify(expected: []const u8, input: anytype) !void {
-    var output = std.ArrayList(u8).init(testing.allocator);
-    defer output.deinit();
-
-    try stringify(testing.allocator, input, output.writer());
+    var aw: std.Io.Writer.Allocating = .init(testing.allocator);
+    try stringify(testing.allocator, input, &aw.writer);
+    var output = aw.toArrayList();
+    defer output.deinit(testing.allocator);
     try testing.expectEqualStrings(expected, output.items);
 }
 
@@ -622,4 +655,240 @@ test "stringify a list" {
 
     const arr: [3]i64 = .{ 1, 2, 3 };
     try testStringify("[ 1, 2, 3 ]", arr);
+}
+
+test "double quoted escape sequences - backslash and slash" {
+    const source =
+        \\- "backslash: \\"
+        \\- "slash: \/"
+        \\- "null: \0"
+        \\- "bell: \a"
+        \\- "backspace: \b"
+        \\- "escape: \e"
+        \\- "form feed: \f"
+        \\- "carriage return: \r"
+        \\- "vertical tab: \v"
+        \\- "space: \ "
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const arr = try yaml.parse(arena.allocator(), [10][]const u8);
+    try testing.expectEqualStrings("backslash: \\", arr[0]);
+    try testing.expectEqualStrings("slash: /", arr[1]);
+    try testing.expectEqualStrings("null: \x00", arr[2]);
+    try testing.expectEqualStrings("bell: \x07", arr[3]);
+    try testing.expectEqualStrings("backspace: \x08", arr[4]);
+    try testing.expectEqualStrings("escape: \x1b", arr[5]);
+    try testing.expectEqualStrings("form feed: \x0c", arr[6]);
+    try testing.expectEqualStrings("carriage return: \r", arr[7]);
+    try testing.expectEqualStrings("vertical tab: \x0b", arr[8]);
+    try testing.expectEqualStrings("space:  ", arr[9]);
+}
+
+test "double quoted unicode escape sequences" {
+    const source =
+        \\- "\x41"
+        \\- "\u0041"
+        \\- "\U00000041"
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const arr = try yaml.parse(arena.allocator(), [3][]const u8);
+    // All should produce 'A' (U+0041)
+    try testing.expectEqualStrings("A", arr[0]);
+    try testing.expectEqualStrings("A", arr[1]);
+    try testing.expectEqualStrings("A", arr[2]);
+}
+
+test "double quoted escaped backslash before closing quote" {
+    // This was the original bug: "hello\\" should parse as hello\ 
+    const source =
+        \\- "hello\\"
+        \\- "path\\to\\file"
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const arr = try yaml.parse(arena.allocator(), [2][]const u8);
+    try testing.expectEqualStrings("hello\\", arr[0]);
+    try testing.expectEqualStrings("path\\to\\file", arr[1]);
+}
+
+test "quoted strings are not type-coerced" {
+    // YAML 1.2 spec: quoted scalars are always strings
+    const source =
+        \\a: "123"
+        \\b: '456'
+        \\c: "true"
+        \\d: 'false'
+        \\e: "1.5"
+        \\f: '0x10'
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const map = yaml.docs.items[0].map;
+
+    // All quoted values should be strings, not numbers or booleans
+    try testing.expectEqualStrings("123", try map.get("a").?.asScalar());
+    try testing.expectEqualStrings("456", try map.get("b").?.asScalar());
+    try testing.expectEqualStrings("true", try map.get("c").?.asScalar());
+    try testing.expectEqualStrings("false", try map.get("d").?.asScalar());
+    try testing.expectEqualStrings("1.5", try map.get("e").?.asScalar());
+    try testing.expectEqualStrings("0x10", try map.get("f").?.asScalar());
+}
+
+test "null values" {
+    const source =
+        \\a: null
+        \\b: ~
+        \\c: Null
+        \\d: NULL
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const map = yaml.docs.items[0].map;
+
+    try testing.expectEqualStrings("null", try map.get("a").?.asScalar());
+    try testing.expectEqualStrings("~", try map.get("b").?.asScalar());
+    try testing.expectEqualStrings("Null", try map.get("c").?.asScalar());
+    try testing.expectEqualStrings("NULL", try map.get("d").?.asScalar());
+}
+
+test "flow mapping" {
+    const source =
+        \\data: {a: 1, b: hello, c: true}
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const outer = yaml.docs.items[0].map;
+    const inner = outer.get("data").?.map;
+
+    try testing.expectEqualStrings("1", try inner.get("a").?.asScalar());
+    try testing.expectEqualStrings("hello", try inner.get("b").?.asScalar());
+    try testing.expectEqualStrings("true", try inner.get("c").?.asScalar());
+}
+
+test "nested flow mapping" {
+    const source =
+        \\{a: {x: 1}, b: {y: 2}}
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const outer = yaml.docs.items[0].map;
+
+    const a = outer.get("a").?.map;
+    try testing.expectEqualStrings("1", try a.get("x").?.asScalar());
+
+    const b = outer.get("b").?.map;
+    try testing.expectEqualStrings("2", try b.get("y").?.asScalar());
+}
+
+test "tilde null in list" {
+    const source =
+        \\- ~
+        \\- null
+        \\- actual_value
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const list = yaml.docs.items[0].list;
+    try testing.expectEqual(@as(usize, 3), list.len);
+    try testing.expectEqualStrings("~", try list[0].asScalar());
+    try testing.expectEqualStrings("null", try list[1].asScalar());
+    try testing.expectEqualStrings("actual_value", try list[2].asScalar());
+}
+
+test "null in typed struct with optional" {
+    const source =
+        \\name: hello
+        \\value: ~
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const result = try yaml.parse(arena.allocator(), struct {
+        name: []const u8,
+        value: ?[]const u8,
+    });
+    try testing.expectEqualStrings("hello", result.name);
+    try testing.expect(result.value == null);
+}
+
+test "special float values" {
+    const source =
+        \\pos_inf: .inf
+        \\neg_inf: -.inf
+        \\not_a_number: .nan
+    ;
+
+    var yaml: Yaml = .{ .source = source };
+    defer yaml.deinit(testing.allocator);
+    try yaml.load(testing.allocator);
+
+    // In the scalar-based model, these are raw strings
+    try testing.expectEqual(yaml.docs.items.len, 1);
+    const map = yaml.docs.items[0].map;
+
+    try testing.expectEqualStrings(".inf", try map.get("pos_inf").?.asScalar());
+    try testing.expectEqualStrings("-.inf", try map.get("neg_inf").?.asScalar());
+    try testing.expectEqualStrings(".nan", try map.get("not_a_number").?.asScalar());
+
+    // Typed parsing should handle these correctly
+    var arena = Arena.init(testing.allocator);
+    defer arena.deinit();
+
+    const result = try yaml.parse(arena.allocator(), struct { pos_inf: f64, neg_inf: f64, not_a_number: f64 });
+    try testing.expect(std.math.isPositiveInf(result.pos_inf));
+    try testing.expect(std.math.isNegativeInf(result.neg_inf));
+    try testing.expect(std.math.isNan(result.not_a_number));
+}
+
+test "stringify null and special floats" {
+    // null optional encodes as nothing (key omitted in struct)
+    try testStringify("", @as(?u64, null));
+    try testStringify(
+        \\a: 1
+    , struct { a: ?u64, b: ?u64 }{ .a = 1, .b = null });
 }

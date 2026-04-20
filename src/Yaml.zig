@@ -91,21 +91,17 @@ pub fn parse(self: Yaml, arena: Allocator, comptime T: type) Error!T {
 
 fn parseValue(self: Yaml, arena: Allocator, comptime T: type, value: Value) Error!T {
     return switch (@typeInfo(T)) {
-        .int => math.cast(T, try value.asInt()) orelse return error.Overflow,
+        .int => self.parseInt(T, value),
         .bool => self.parseBoolean(bool, value),
-        .float => if (value.asFloat()) |float| {
-            return math.lossyCast(T, float);
-        } else |_| {
-            return math.lossyCast(T, try value.asInt());
-        },
+        .float => self.parseFloat(T, value),
         .@"struct" => self.parseStruct(arena, T, try value.asMap()),
         .@"union" => self.parseUnion(arena, T, value),
         .array => self.parseArray(arena, T, try value.asList()),
         .pointer => if (value.asList()) |list| {
             return self.parsePointer(arena, T, .{ .list = list });
         } else |_| {
-            const string = try value.asString();
-            return self.parsePointer(arena, T, .{ .string = try arena.dupe(u8, string) });
+            const scalar = try value.asScalar();
+            return self.parsePointer(arena, T, .{ .scalar = try arena.dupe(u8, scalar) });
         },
         .void => error.TypeMismatch,
         .optional => unreachable,
@@ -113,9 +109,48 @@ fn parseValue(self: Yaml, arena: Allocator, comptime T: type, value: Value) Erro
     };
 }
 
+fn parseInt(self: Yaml, comptime T: type, value: Value) Error!T {
+    _ = self;
+    const scalar = try value.asScalar();
+    return try std.fmt.parseInt(T, scalar, 0);
+}
+
+fn parseFloat(self: Yaml, comptime T: type, value: Value) Error!T {
+    _ = self;
+    const scalar = try value.asScalar();
+    // YAML 1.2 special float values
+    if (std.mem.eql(u8, scalar, ".inf") or std.mem.eql(u8, scalar, ".Inf") or std.mem.eql(u8, scalar, ".INF")) {
+        return std.math.inf(T);
+    } else if (std.mem.eql(u8, scalar, "-.inf") or std.mem.eql(u8, scalar, "-.Inf") or std.mem.eql(u8, scalar, "-.INF")) {
+        return -std.math.inf(T);
+    } else if (std.mem.eql(u8, scalar, ".nan") or std.mem.eql(u8, scalar, ".NaN") or std.mem.eql(u8, scalar, ".NAN")) {
+        return std.math.nan(T);
+    }
+    return try std.fmt.parseFloat(T, scalar);
+}
+
 fn parseBoolean(self: Yaml, comptime T: type, value: Value) Error!T {
     _ = self;
-    return value.asBool();
+    const raw = try value.asScalar();
+
+    if (raw.len > 0 and raw.len <= longestBooleanValueString) {
+        var buffer: [longestBooleanValueString]u8 = undefined;
+        const lower_raw = std.ascii.lowerString(&buffer, raw);
+
+        for (supportedTruthyBooleanValue) |v| {
+            if (std.mem.eql(u8, v, lower_raw)) {
+                return true;
+            }
+        }
+
+        for (supportedFalsyBooleanValue) |v| {
+            if (std.mem.eql(u8, v, lower_raw)) {
+                return false;
+            }
+        }
+    }
+
+    return error.TypeMismatch;
 }
 
 fn parseUnion(self: Yaml, arena: Allocator, comptime T: type, value: Value) Error!T {
@@ -126,6 +161,7 @@ fn parseUnion(self: Yaml, arena: Allocator, comptime T: type, value: Value) Erro
             if (self.parseValue(arena, field.type, value)) |u_value| {
                 return @unionInit(T, field.name, u_value);
             } else |err| switch (err) {
+                error.InvalidCharacter => {},
                 error.TypeMismatch => {},
                 error.StructFieldMissing => {},
                 else => return err,
@@ -138,6 +174,14 @@ fn parseUnion(self: Yaml, arena: Allocator, comptime T: type, value: Value) Erro
 
 fn parseOptional(self: Yaml, arena: Allocator, comptime T: type, value: ?Value) Error!T {
     const unwrapped = value orelse return null;
+    // YAML null/empty values map to null for optional types
+    if (unwrapped == .empty) return null;
+    if (unwrapped == .scalar) {
+        const raw = unwrapped.scalar;
+        if (std.mem.eql(u8, raw, "~") or std.ascii.eqlIgnoreCase(raw, "null")) {
+            return null;
+        }
+    }
     const opt_info = @typeInfo(T).optional;
     return @as(T, try self.parseValue(arena, opt_info.child, unwrapped));
 }
@@ -172,8 +216,9 @@ fn parsePointer(self: Yaml, arena: Allocator, comptime T: type, value: Value) Er
 
     switch (ptr_info.size) {
         .slice => {
-            if (ptr_info.child == u8) {
-                return try arena.dupe(u8, try value.asString());
+            if (ptr_info.child == u8) blk: {
+                const scalar = value.asScalar() catch break :blk;
+                return try arena.dupe(u8, scalar);
             }
 
             var parsed = try arena.alloc(ptr_info.child, value.list.len);
@@ -226,6 +271,7 @@ const longestBooleanValueString = blk: {
 };
 
 pub const Error = error{
+    InvalidCharacter,
     Unimplemented,
     TypeMismatch,
     StructFieldMissing,
@@ -245,23 +291,20 @@ pub const YamlError = error{
 
 pub const StringifyError = error{
     OutOfMemory,
-} || YamlError || std.fs.File.WriteError;
+} || YamlError || std.Io.Writer.Error;
 
 pub const List = []Value;
 pub const Map = std.StringArrayHashMapUnmanaged(Value);
 
 pub const Value = union(enum) {
     empty,
-    int: i64,
-    float: f64,
-    boolean: bool,
-    string: []const u8,
+    scalar: []const u8,
     list: List,
     map: Map,
 
     pub fn deinit(self: *Value, gpa: Allocator) void {
         switch (self.*) {
-            .string => |string| gpa.free(string),
+            .scalar => |scalar| gpa.free(scalar),
             .list => |list| {
                 for (list) |*value| {
                     value.deinit(gpa);
@@ -275,28 +318,13 @@ pub const Value = union(enum) {
                 }
                 map.deinit(gpa);
             },
-            .empty, .int, .float, .boolean => {},
+            .empty => {},
         }
     }
 
-    pub fn asInt(self: Value) !i64 {
-        if (self != .int) return error.TypeMismatch;
-        return self.int;
-    }
-
-    pub fn asFloat(self: Value) !f64 {
-        if (self != .float) return error.TypeMismatch;
-        return self.float;
-    }
-
-    pub fn asString(self: Value) ![]const u8 {
-        if (self != .string) return error.TypeMismatch;
-        return self.string;
-    }
-
-    pub fn asBool(self: Value) !bool {
-        if (self != .boolean) return error.TypeMismatch;
-        return self.boolean;
+    pub fn asScalar(self: Value) ![]const u8 {
+        if (self != .scalar) return error.TypeMismatch;
+        return self.scalar;
     }
 
     pub fn asList(self: Value) !List {
@@ -316,11 +344,8 @@ pub const Value = union(enum) {
 
     pub fn stringify(self: Value, writer: anytype, args: StringifyArgs) StringifyError!void {
         switch (self) {
-            .empty => return,
-            .int => |int| return writer.print("{}", .{int}),
-            .float => |float| return writer.print("{d}", .{float}),
-            .string => |string| return writer.print("{s}", .{string}),
-            .boolean => |bool_val| return writer.print("{}", .{bool_val}),
+            .empty => return writer.writeAll("null"),
+            .scalar => |scalar| return writer.print("{s}", .{scalar}),
             .list => |list| {
                 const len = list.len;
                 if (len == 0) return;
@@ -328,7 +353,7 @@ pub const Value = union(enum) {
                 const first = list[0];
                 if (first.isCompound()) {
                     for (list, 0..) |elem, i| {
-                        try writer.writeByteNTimes(' ', args.indentation);
+                        try writer.splatByteAll(' ', args.indentation);
                         try writer.writeAll("- ");
                         try elem.stringify(writer, .{
                             .indentation = args.indentation + 2,
@@ -357,7 +382,7 @@ pub const Value = union(enum) {
                 var i: usize = 0;
                 for (map.keys(), map.values()) |key, value| {
                     if (!args.should_inline_first_key or i != 0) {
-                        try writer.writeByteNTimes(' ', args.indentation);
+                        try writer.splatByteAll(' ', args.indentation);
                     }
                     try writer.print("{s}: ", .{key});
 
@@ -462,7 +487,7 @@ pub const Value = union(enum) {
                 return Value{ .map = out_map };
             },
             .list_empty => {
-                return Value{ .list = &.{} };
+                return Value{ .list = try gpa.alloc(Value, 0) };
             },
             .list_one => {
                 const value_index = tree.nodeData(node_index).node;
@@ -508,41 +533,13 @@ pub const Value = union(enum) {
 
                 return Value{ .list = try out_list.toOwnedSlice(gpa) };
             },
-            .value, .string_value => {
-                const raw = switch (tag) {
-                    .value => tree.nodeScope(node_index).rawString(tree),
-                    .string_value => tree.nodeData(node_index).string.slice(tree),
-                    else => unreachable,
-                };
-
-                try_int: {
-                    const int = std.fmt.parseInt(i64, raw, 0) catch break :try_int;
-                    return Value{ .int = int };
-                }
-
-                try_float: {
-                    const float = std.fmt.parseFloat(f64, raw) catch break :try_float;
-                    return Value{ .float = float };
-                }
-
-                if (raw.len > 0 and raw.len <= longestBooleanValueString) {
-                    var buffer: [longestBooleanValueString]u8 = undefined;
-                    const lower_raw = std.ascii.lowerString(&buffer, raw);
-
-                    for (supportedTruthyBooleanValue) |v| {
-                        if (std.mem.eql(u8, v, lower_raw)) {
-                            return Value{ .boolean = true };
-                        }
-                    }
-
-                    for (supportedFalsyBooleanValue) |v| {
-                        if (std.mem.eql(u8, v, lower_raw)) {
-                            return Value{ .boolean = false };
-                        }
-                    }
-                }
-
-                return Value{ .string = try gpa.dupe(u8, raw) };
+            .string_value => {
+                const raw = tree.nodeData(node_index).string.slice(tree);
+                return Value{ .scalar = try gpa.dupe(u8, raw) };
+            },
+            .value => {
+                const raw = tree.nodeScope(node_index).rawString(tree);
+                return Value{ .scalar = try gpa.dupe(u8, raw) };
             },
         }
     }
@@ -551,9 +548,9 @@ pub const Value = union(enum) {
         switch (@typeInfo(@TypeOf(input))) {
             .comptime_int,
             .int,
-            => return Value{ .int = math.cast(i64, input) orelse return error.Overflow },
-
-            .float => return Value{ .float = math.lossyCast(f64, input) },
+            .comptime_float,
+            .float,
+            => return Value{ .scalar = try std.fmt.allocPrint(arena, "{d}", .{input}) },
 
             .@"struct" => |info| if (info.is_tuple) {
                 var list: std.ArrayListUnmanaged(Value) = .empty;
@@ -602,7 +599,7 @@ pub const Value = union(enum) {
                 },
                 .slice => {
                     if (info.child == u8) {
-                        return Value{ .string = try arena.dupe(u8, input) };
+                        return Value{ .scalar = try arena.dupe(u8, input) };
                     }
 
                     var list: std.ArrayListUnmanaged(Value) = .empty;

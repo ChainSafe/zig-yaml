@@ -157,9 +157,9 @@ fn parseUnion(self: Yaml, arena: Allocator, comptime T: type, value: Value) Erro
     const union_info = @typeInfo(T).@"union";
 
     if (union_info.tag_type) |_| {
-        inline for (union_info.fields) |field| {
-            if (self.parseValue(arena, field.type, value)) |u_value| {
-                return @unionInit(T, field.name, u_value);
+        inline for (union_info.field_names, union_info.field_types) |name, Field| {
+            if (self.parseValue(arena, Field, value)) |u_value| {
+                return @unionInit(T, name, u_value);
             } else |err| switch (err) {
                 error.InvalidCharacter => {},
                 error.TypeMismatch => {},
@@ -190,22 +190,22 @@ fn parseStruct(self: Yaml, arena: Allocator, comptime T: type, map: Map) Error!T
     const struct_info = @typeInfo(T).@"struct";
     var parsed: T = undefined;
 
-    inline for (struct_info.fields) |field| {
-        const value: ?Value = map.get(field.name) orelse blk: {
-            const field_name = try mem.replaceOwned(u8, arena, field.name, "_", "-");
+    inline for (struct_info.field_names, struct_info.field_types) |name, Field| {
+        const value: ?Value = map.get(name) orelse blk: {
+            const field_name = try mem.replaceOwned(u8, arena, name, "_", "-");
             break :blk map.get(field_name);
         };
 
-        if (@typeInfo(field.type) == .optional) {
-            @field(parsed, field.name) = try self.parseOptional(arena, field.type, value);
+        if (@typeInfo(Field) == .optional) {
+            @field(parsed, name) = try self.parseOptional(arena, Field, value);
             continue;
         }
 
         const unwrapped = value orelse {
-            log.debug("missing struct field: {s}: {s}", .{ field.name, @typeName(field.type) });
+            log.debug("missing struct field: {s}: {s}", .{ name, @typeName(Field) });
             return error.StructFieldMissing;
         };
-        @field(parsed, field.name) = try self.parseValue(arena, field.type, unwrapped);
+        @field(parsed, name) = try self.parseValue(arena, Field, unwrapped);
     }
 
     return parsed;
@@ -554,10 +554,10 @@ pub const Value = union(enum) {
 
             .@"struct" => |info| if (info.is_tuple) {
                 var list: std.ArrayListUnmanaged(Value) = .empty;
-                try list.ensureTotalCapacityPrecise(arena, info.fields.len);
+                try list.ensureTotalCapacityPrecise(arena, info.field_names.len);
 
-                inline for (info.fields) |field| {
-                    if (try encode(arena, @field(input, field.name))) |value| {
+                inline for (info.field_names) |name| {
+                    if (try encode(arena, @field(input, name))) |value| {
                         list.appendAssumeCapacity(value);
                     }
                 }
@@ -565,11 +565,11 @@ pub const Value = union(enum) {
                 return Value{ .list = try list.toOwnedSlice(arena) };
             } else {
                 var map: Map = .empty;
-                try map.ensureTotalCapacity(arena, info.fields.len);
+                try map.ensureTotalCapacity(arena, info.field_names.len);
 
-                inline for (info.fields) |field| {
-                    if (try encode(arena, @field(input, field.name))) |value| {
-                        const key = try arena.dupe(u8, field.name);
+                inline for (info.field_names) |name| {
+                    if (try encode(arena, @field(input, name))) |value| {
+                        const key = try arena.dupe(u8, name);
                         map.putAssumeCapacityNoClobber(key, value);
                     }
                 }
@@ -578,9 +578,9 @@ pub const Value = union(enum) {
             },
 
             .@"union" => |info| if (info.tag_type) |tag_type| {
-                inline for (info.fields) |field| {
-                    if (@field(tag_type, field.name) == input) {
-                        return try encode(arena, @field(input, field.name));
+                inline for (info.field_names) |name| {
+                    if (@field(tag_type, name) == input) {
+                        return try encode(arena, @field(input, name));
                     }
                 } else unreachable;
             } else return error.UntaggedUnion,

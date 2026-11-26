@@ -4,15 +4,6 @@ const mem = std.mem;
 const Allocator = mem.Allocator;
 const Dir = std.Io.Dir;
 const Io = std.Io;
-const Step = std.Build.Step;
-const SpecTest = @This();
-
-pub const base_id: Step.Id = .custom;
-
-step: Step,
-output_file: std.Build.GeneratedFile,
-
-const test_filename = "yaml_test_suite.zig";
 
 const preamble =
     \\// This file is generated from the YAML 1.2 test database.
@@ -42,20 +33,6 @@ const preamble =
     \\
 ;
 
-pub fn create(owner: *std.Build) *SpecTest {
-    const spec_test = owner.allocator.create(SpecTest) catch @panic("OOM");
-
-    spec_test.* = .{
-        .step = Step.init(.{ .id = base_id, .name = "yaml-test-generate", .owner = owner, .makeFn = make }),
-        .output_file = std.Build.GeneratedFile{ .step = &spec_test.step },
-    };
-    return spec_test;
-}
-
-pub fn path(spec_test: *SpecTest) std.Build.LazyPath {
-    return std.Build.LazyPath{ .generated = .{ .file = &spec_test.output_file } };
-}
-
 const Testcase = struct {
     name: []const u8,
     path: []const u8,
@@ -68,38 +45,23 @@ const Testcase = struct {
     tags: std.BufSet,
 };
 
-fn make(step: *Step, make_options: Step.MakeOptions) !void {
-    _ = make_options;
-
-    const spec_test: *SpecTest = @fieldParentPtr("step", step);
-    const b = step.owner;
-    const io_ctx = b.graph.io;
-
-    const cwd = Dir.cwd();
-    cwd.access(io_ctx, "test/yaml-test-suite/tags", .{}) catch {
-        return spec_test.step.fail("Testfiles not found, make sure you have loaded the submodule.", .{});
-    };
-    if (b.graph.host.result.os.tag == .windows) {
-        return spec_test.step.fail("Windows does not support symlinks in git properly, can't run testsuite.", .{});
-    }
-
-    var arena_allocator = std.heap.ArenaAllocator.init(b.allocator);
-    defer arena_allocator.deinit();
-    const arena = arena_allocator.allocator();
+pub fn main(init: std.process.Init) !void {
+    if (@import("builtin").os.tag == .windows) return error.SpecTestsRequireSymlinks;
+    const arena = init.arena.allocator();
+    const io_ctx = init.io;
+    const args = try init.minimal.args.toSlice(arena);
+    if (args.len != 3) return error.InvalidArguments;
 
     var testcases: std.StringArrayHashMapUnmanaged(Testcase) = .empty;
 
-    const root_data_path = try std.fs.path.join(arena, &[_][]const u8{
-        b.build_root.path.?,
-        "test/yaml-test-suite",
-    });
-
-    const root_data_dir = try Dir.openDirAbsolute(io_ctx, root_data_path, .{});
+    const root_data_dir = try Dir.cwd().openDir(io_ctx, args[1], .{});
+    defer root_data_dir.close(io_ctx);
 
     var itdir = try root_data_dir.openDir(io_ctx, "tags", .{
         .iterate = true,
         .access_sub_paths = true,
     });
+    defer itdir.close(io_ctx);
 
     var walker = try itdir.walk(arena);
     defer walker.deinit();
@@ -131,32 +93,7 @@ fn make(step: *Step, make_options: Step.MakeOptions) !void {
         };
     }
 
-    var man = b.graph.cache.obtain();
-    defer man.deinit();
-
-    man.hash.addBytes(output.items);
-
-    if (try step.cacheHit(&man)) {
-        const digest = man.final();
-        spec_test.output_file.path = try b.cache_root.join(b.allocator, &.{
-            &digest, test_filename,
-        });
-        return;
-    }
-    const digest = man.final();
-
-    const sub_path = b.pathJoin(&.{ &digest, test_filename });
-    const sub_path_dirname = std.fs.path.dirname(sub_path).?;
-
-    b.cache_root.handle.createDirPath(io_ctx, sub_path_dirname) catch |err| {
-        return step.fail("unable to make path '{}{s}': {}", .{ b.cache_root, sub_path_dirname, err });
-    };
-
-    b.cache_root.handle.writeFile(io_ctx, .{ .sub_path = sub_path, .data = output.items }) catch |err| {
-        return step.fail("unable to write file: {}", .{err});
-    };
-    spec_test.output_file.path = try b.cache_root.join(b.allocator, &.{sub_path});
-    try man.writeManifest();
+    try Dir.cwd().writeFile(io_ctx, .{ .sub_path = args[2], .data = output.items });
 }
 
 fn collectTest(io_ctx: Io, arena: Allocator, entry: Dir.Walker.Entry, testcases: *std.StringArrayHashMapUnmanaged(Testcase)) !void {

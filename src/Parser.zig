@@ -852,7 +852,7 @@ fn token(self: Parser, index: Token.Index) Token {
 
 fn fail(self: *Parser, gpa: Allocator, token_index: Token.Index, comptime format: []const u8, args: anytype) ParseError {
     const line_col = self.tokens.items(.line_col)[@backingInt(token_index)];
-    const msg = try std.fmt.allocPrint(gpa, format, args);
+    const msg = try gpa.print(format, args);
     defer gpa.free(msg);
     const line_info = getLineInfo(self.source, line_col);
     try self.errors.addRootErrorMessage(.{

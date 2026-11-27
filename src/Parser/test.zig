@@ -633,7 +633,7 @@ fn parseError2(source: []const u8, comptime format: []const u8, args: anytype) !
     var given = aw.toArrayList();
     defer given.deinit(testing.allocator);
 
-    const expected = try std.fmt.allocPrint(testing.allocator, format, args);
+    const expected = try testing.allocator.print(format, args);
     defer testing.allocator.free(expected);
     try testing.expectEqualStrings(expected, given.items);
 }

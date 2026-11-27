@@ -550,7 +550,7 @@ pub const Value = union(enum) {
             .int,
             .comptime_float,
             .float,
-            => return Value{ .scalar = try std.fmt.allocPrint(arena, "{d}", .{input}) },
+            => return Value{ .scalar = try arena.print("{d}", .{input}) },
 
             .@"struct" => |info| if (info.is_tuple) {
                 var list: std.ArrayListUnmanaged(Value) = .empty;

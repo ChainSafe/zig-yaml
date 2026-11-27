@@ -28,8 +28,8 @@ pub fn log(
     // Hide debug messages unless:
     // * logging enabled with `-Dlog`.
     // * the --debug-log arg for the scope has been provided
-    if (@intFromEnum(level) > @intFromEnum(std.log.level) or
-        @intFromEnum(level) > @intFromEnum(std.log.Level.info))
+    if (@backingInt(level) > @backingInt(std.log.level) or
+        @backingInt(level) > @backingInt(std.log.Level.info))
     {
         if (!build_options.enable_logging) return;
 

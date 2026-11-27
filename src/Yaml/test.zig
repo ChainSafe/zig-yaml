@@ -713,7 +713,7 @@ test "double quoted unicode escape sequences" {
 }
 
 test "double quoted escaped backslash before closing quote" {
-    // This was the original bug: "hello\\" should parse as hello\ 
+    // This was the original bug: "hello\\" should parse as hello\
     const source =
         \\- "hello\\"
         \\- "path\\to\\file"

@@ -47,11 +47,19 @@ pub fn build(b: *std.Build) void {
     // YAML Test Suite spec tests
     const enable_spec_tests = b.option(bool, "enable-spec-tests", "Enable YAML Test Suite") orelse false;
     if (enable_spec_tests) {
-        const SpecTest = @import("test/spec.zig");
-        const spec_test = SpecTest.create(b);
+        const generator = b.addExecutable(.{
+            .name = "yaml-test-generate",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("test/spec.zig"),
+                .target = b.graph.host,
+            }),
+        });
+        const generate = b.addRunArtifact(generator);
+        generate.addDirectoryArg(b.path("test/yaml-test-suite"));
+        const generated_tests = generate.addOutputFileArg("yaml_test_suite.zig");
 
         const spec_test_module = b.createModule(.{
-            .root_source_file = spec_test.path(),
+            .root_source_file = generated_tests,
             .target = target,
             .optimize = optimize,
         });

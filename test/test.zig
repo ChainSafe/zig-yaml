@@ -185,8 +185,8 @@ test "single lib tbd" {
     const expected = LibTbd{
         .tbd_version = 4,
         .targets = &[_][]const u8{
-            "x86_64-macos", "x86_64-maccatalyst", "arm64-macos",
-            "arm64-maccatalyst", "arm64e-macos", "arm64e-maccatalyst",
+            "x86_64-macos",      "x86_64-maccatalyst", "arm64-macos",
+            "arm64-maccatalyst", "arm64e-macos",       "arm64e-maccatalyst",
         },
         .uuids = &.{
             .{ .target = "x86_64-macos", .value = "F86CC732-D5E4-30B5-AA7D-167DF5EC2708" },
@@ -201,11 +201,11 @@ test "single lib tbd" {
         .reexported_libraries = &.{
             .{
                 .targets = &.{
-                    "x86_64-macos", "x86_64-maccatalyst", "arm64-macos",
-                    "arm64-maccatalyst", "arm64e-macos", "arm64e-maccatalyst",
+                    "x86_64-macos",      "x86_64-maccatalyst", "arm64-macos",
+                    "arm64-maccatalyst", "arm64e-macos",       "arm64e-maccatalyst",
                 },
                 .libraries = &.{
-                    "/usr/lib/system/libcache.dylib", "/usr/lib/system/libcommonCrypto.dylib",
+                    "/usr/lib/system/libcache.dylib",       "/usr/lib/system/libcommonCrypto.dylib",
                     "/usr/lib/system/libcompiler_rt.dylib", "/usr/lib/system/libcopyfile.dylib",
                     "/usr/lib/system/libxpc.dylib",
                 },
@@ -215,17 +215,17 @@ test "single lib tbd" {
             .{
                 .targets = &.{ "x86_64-maccatalyst", "x86_64-macos" },
                 .symbols = &.{
-                    "R8289209$_close", "R8289209$_fork", "R8289209$_fsync",
+                    "R8289209$_close",       "R8289209$_fork",  "R8289209$_fsync",
                     "R8289209$_getattrlist", "R8289209$_write",
                 },
             },
             .{
                 .targets = &.{
                     "x86_64-maccatalyst", "x86_64-macos", "arm64e-maccatalyst",
-                    "arm64e-macos", "arm64-macos", "arm64-maccatalyst",
+                    "arm64e-macos",       "arm64-macos",  "arm64-maccatalyst",
                 },
                 .symbols = &.{
-                    "___crashreporter_info__", "_libSystem_atfork_child", "_libSystem_atfork_parent",
+                    "___crashreporter_info__",   "_libSystem_atfork_child", "_libSystem_atfork_parent",
                     "_libSystem_atfork_prepare", "_mach_init_routine",
                 },
             },
